@@ -3,17 +3,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const activitySelect = document.getElementById("activity");
   const signupForm = document.getElementById("signup-form");
   const messageDiv = document.getElementById("message");
+  const unregisterForm = document.getElementById("unregister-form");
+  const unregisterEmail = document.getElementById("unregister-email");
+  const unregisterActivitySelect = document.getElementById("unregister-activity");
+  const unregisterMessageDiv = document.getElementById("unregister-message");
+
+  let activitiesCache = {}; // Store activities for filtering
 
   // Function to fetch activities from API
   async function fetchActivities() {
     try {
       const response = await fetch("/activities");
       const activities = await response.json();
+      activitiesCache = activities; // Cache for unregister filtering
 
       // Clear loading message
       activitiesList.innerHTML = "";
 
-      // Populate activities list
+      // Clear and repopulate activity dropdowns
+      activitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
+      unregisterActivitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
+
+      // Populate activities list and signup dropdown
       Object.entries(activities).forEach(([name, details]) => {
         const activityCard = document.createElement("div");
         activityCard.className = "activity-card";
@@ -45,16 +56,40 @@ document.addEventListener("DOMContentLoaded", () => {
 
         activitiesList.appendChild(activityCard);
 
-        // Add option to select dropdown
-        const option = document.createElement("option");
-        option.value = name;
-        option.textContent = name;
-        activitySelect.appendChild(option);
+        // Add option to signup dropdown
+        const option1 = document.createElement("option");
+        option1.value = name;
+        option1.textContent = name;
+        activitySelect.appendChild(option1);
       });
+
+      // Populate unregister dropdown based on current email value
+      updateUnregisterDropdown();
     } catch (error) {
       activitiesList.innerHTML = "<p>Failed to load activities. Please try again later.</p>";
       console.error("Error fetching activities:", error);
     }
+  }
+
+  // Update unregister dropdown to show only activities the student is registered for
+  function updateUnregisterDropdown() {
+    if (!unregisterActivitySelect) return;
+    const email = unregisterEmail ? unregisterEmail.value.trim() : "";
+    unregisterActivitySelect.innerHTML = '<option value="">-- Select an activity --</option>';
+    if (!email) return;
+    Object.entries(activitiesCache).forEach(([name, details]) => {
+      if (details.participants.includes(email)) {
+        const option = document.createElement("option");
+        option.value = name;
+        option.textContent = name;
+        unregisterActivitySelect.appendChild(option);
+      }
+    });
+  }
+
+  // Listen for changes to the unregister email input
+  if (unregisterEmail) {
+    unregisterEmail.addEventListener("input", updateUnregisterDropdown);
   }
 
   // Handle form submission
@@ -96,6 +131,50 @@ document.addEventListener("DOMContentLoaded", () => {
       console.error("Error signing up:", error);
     }
   });
+
+  // Handle unregister form submission
+  if (unregisterForm) {
+    unregisterForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+
+      const email = unregisterEmail.value;
+      const activity = unregisterActivitySelect.value;
+
+      try {
+        const response = await fetch(
+          `/activities/${encodeURIComponent(activity)}/unregister?email=${encodeURIComponent(email)}`,
+          {
+            method: "POST",
+          }
+        );
+
+        const result = await response.json();
+
+        if (response.ok) {
+          unregisterMessageDiv.textContent = result.message;
+          unregisterMessageDiv.className = "success";
+          unregisterForm.reset();
+          // Refresh activities and unregister dropdown
+          await fetchActivities();
+        } else {
+          unregisterMessageDiv.textContent = result.detail || "An error occurred";
+          unregisterMessageDiv.className = "error";
+        }
+
+        unregisterMessageDiv.classList.remove("hidden");
+
+        // Hide message after 5 seconds
+        setTimeout(() => {
+          unregisterMessageDiv.classList.add("hidden");
+        }, 5000);
+      } catch (error) {
+        unregisterMessageDiv.textContent = "Failed to unregister. Please try again.";
+        unregisterMessageDiv.className = "error";
+        unregisterMessageDiv.classList.remove("hidden");
+        console.error("Error unregistering:", error);
+      }
+    });
+  }
 
   // Initialize app
   fetchActivities();
